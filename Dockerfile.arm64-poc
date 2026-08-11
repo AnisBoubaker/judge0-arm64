@@ -29,19 +29,55 @@ RUN curl -fsSL "https://codeload.github.com/ioi/isolate/tar.gz/${ISOLATE_COMMIT}
     && make -C /tmp/isolate -j"$(nproc)" isolate isolate-cg-keeper default.cf systemd/isolate.service \
     && make -C /tmp/isolate DESTDIR=/tmp/isolate-root install
 
+FROM --platform=linux/arm64 ubuntu:20.04@sha256:722ea796ac2d57eeb3627c58a582fc1acc58be51faf815e1bce1682ae5c092f7 AS native-toolchains
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG GCC_VERSION=13.2.0
+ARG GCC_SHA256=e275e76442a6067341a27f04c5c6b83d8613144004c0413528863dc6b5c743da
+ARG PYTHON_VERSION=3.12.7
+ARG PYTHON_SHA256=73ac8fe780227bf371add8373c3079f42a0dc62deff8d612cd15a618082ab623
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential ca-certificates curl libbz2-dev libexpat1-dev libffi-dev \
+      libgdbm-dev libgmp-dev liblzma-dev libmpc-dev libmpfr-dev libncurses5-dev \
+      libreadline-dev libsqlite3-dev libssl-dev pkg-config tk-dev uuid-dev xz-utils zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL "https://ftp.gnu.org/gnu/gcc/gcc-${GCC_VERSION}/gcc-${GCC_VERSION}.tar.xz" -o /tmp/gcc.tar.xz \
+    && echo "${GCC_SHA256}  /tmp/gcc.tar.xz" | sha256sum -c - \
+    && mkdir /tmp/gcc-src /tmp/gcc-build \
+    && tar -xJf /tmp/gcc.tar.xz -C /tmp/gcc-src --strip-components=1 \
+    && cd /tmp/gcc-build \
+    && /tmp/gcc-src/configure --prefix="/usr/local/gcc-${GCC_VERSION}" --disable-bootstrap --disable-multilib --enable-languages=c,c++ \
+    && make -j"$(nproc)" \
+    && make install-strip
+
+RUN curl -fsSL "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" -o /tmp/python.tgz \
+    && echo "${PYTHON_SHA256}  /tmp/python.tgz" | sha256sum -c - \
+    && mkdir /tmp/python \
+    && tar -xzf /tmp/python.tgz -C /tmp/python --strip-components=1 \
+    && cd /tmp/python \
+    && ./configure --prefix="/usr/local/python-${PYTHON_VERSION}" --with-ensurepip=no \
+    && make -j"$(nproc)" \
+    && make install
+
 FROM --platform=linux/arm64 ubuntu:20.04@sha256:722ea796ac2d57eeb3627c58a582fc1acc58be51faf815e1bce1682ae5c092f7 AS runtimes
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG GO_VERSION=1.13.5
-ARG GO_SHA256=227b718923e20c846460bbecddde9cb86bad73acc5fb6f8e1a96b81b5c84668b
-ARG JDK_VERSION=13.0.1_9
-ARG JDK_SHA256=f0cfd0d807a10e6128cf1b0ead1e8ae3702ac702d9b4d13914bbce2be06947bb
-ARG NODE_VERSION=12.14.0
-ARG NODE_SHA256=733b4f71ccdf114038bbe0f20574a1e8f4f60b53d39caf445f518745596eadda
-ARG RUST_VERSION=1.40.0
-ARG RUST_SHA256=639271f59766d291ebdade6050e7d05d61cb5c822a3ef9a1e2ab185fed68d729
-ARG TYPESCRIPT_VERSION=3.7.4
-ARG TYPESCRIPT_SHA256=e4f1543efc8d69ed0856b57a909b1786d63dfc3daaaa8056d4f601d98f35daad
+ARG GO_VERSION=1.22.7
+ARG GO_SHA256=ed695684438facbd7e0f286c30b7bc2411cfc605516d8127dc25c62fe5b03885
+ARG JDK_VERSION=17.0.12_7
+ARG JDK_SHA256=8257de06bf37f0c8f19f8d542e2ab5a4e17db3ca5f29d041bd0b02ab265db021
+ARG NODE_VERSION=22.8.0
+ARG NODE_SHA256=9498fec4ce1ac2178d48dea825c012ca2ab532486824b8ed0dd3a7ffae87db0f
+ARG RUST_VERSION=1.81.0
+ARG RUST_SHA256=ef4da9c1ecd56bbbb36f42793524cce3062e6a823ae22cb679a945c075c7755b
+ARG TYPESCRIPT_VERSION=5.6.3
+ARG TYPESCRIPT_SHA256=ef67f8d8ad895858024b7339d3e34bf112cae3c5db1f538c3079038b17ae30fa
+ARG NODE_TYPES_VERSION=22.7.4
+ARG NODE_TYPES_SHA256=0c03483630b7b9c7585b6619fbc240269f9bf744de0ef214ec6a4368b725763c
+ARG UNDICI_TYPES_VERSION=6.19.8
+ARG UNDICI_TYPES_SHA256=6c32d9702b945becc00e2035c66c11169bda294d7b70f06b06e0e97eaac0e418
 
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl xz-utils \
     && rm -rf /var/lib/apt/lists/*
@@ -51,10 +87,10 @@ RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-arm64.tar.gz" -o /tmp/go
     && mkdir -p "/usr/local/go-${GO_VERSION}" \
     && tar -xzf /tmp/go.tar.gz -C "/usr/local/go-${GO_VERSION}" --strip-components=1
 
-RUN curl -fsSL "https://github.com/AdoptOpenJDK/openjdk13-binaries/releases/download/jdk-13.0.1%2B9/OpenJDK13U-jdk_aarch64_linux_hotspot_${JDK_VERSION}.tar.gz" -o /tmp/jdk.tar.gz \
+RUN curl -fsSL "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.12%2B7/OpenJDK17U-jdk_aarch64_linux_hotspot_${JDK_VERSION}.tar.gz" -o /tmp/jdk.tar.gz \
     && echo "${JDK_SHA256}  /tmp/jdk.tar.gz" | sha256sum -c - \
-    && mkdir -p /usr/local/openjdk13 \
-    && tar -xzf /tmp/jdk.tar.gz -C /usr/local/openjdk13 --strip-components=1
+    && mkdir -p /usr/local/openjdk17 \
+    && tar -xzf /tmp/jdk.tar.gz -C /usr/local/openjdk17 --strip-components=1
 
 RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-arm64.tar.xz" -o /tmp/node.tar.xz \
     && echo "${NODE_SHA256}  /tmp/node.tar.xz" | sha256sum -c - \
@@ -72,6 +108,15 @@ RUN curl -fsSL "https://registry.npmjs.org/typescript/-/typescript-${TYPESCRIPT_
     && mkdir -p /usr/local/lib/node_modules/typescript \
     && tar -xzf /tmp/typescript.tgz -C /usr/local/lib/node_modules/typescript --strip-components=1
 
+RUN curl -fsSL "https://registry.npmjs.org/@types/node/-/node-${NODE_TYPES_VERSION}.tgz" -o /tmp/node-types.tgz \
+    && echo "${NODE_TYPES_SHA256}  /tmp/node-types.tgz" | sha256sum -c - \
+    && mkdir -p /usr/local/lib/node_modules/@types/node \
+    && tar -xzf /tmp/node-types.tgz -C /usr/local/lib/node_modules/@types/node --strip-components=1 \
+    && curl -fsSL "https://registry.npmjs.org/undici-types/-/undici-types-${UNDICI_TYPES_VERSION}.tgz" -o /tmp/undici-types.tgz \
+    && echo "${UNDICI_TYPES_SHA256}  /tmp/undici-types.tgz" | sha256sum -c - \
+    && mkdir -p /usr/local/lib/node_modules/undici-types \
+    && tar -xzf /tmp/undici-types.tgz -C /usr/local/lib/node_modules/undici-types --strip-components=1
+
 FROM --platform=linux/arm64 ubuntu:20.04@sha256:722ea796ac2d57eeb3627c58a582fc1acc58be51faf815e1bce1682ae5c092f7 AS production
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -83,31 +128,32 @@ ENV PATH="/usr/local/ruby-2.7.0/bin:/opt/.gem/bin:${PATH}" \
     JUDGE0_UPSTREAM_COMMIT=ffd7a48cc6da86d6ac155ef10dbd67d02736070b \
     JUDGE0_SECURITY_STATUS=development-only-not-security-reviewed
 
-LABEL org.opencontainers.image.source="https://github.com/judge0/judge0" \
-      org.opencontainers.image.version="1.13.1-dev.1" \
+LABEL org.opencontainers.image.source="https://github.com/AnisBoubaker/judge0-arm64" \
+      org.opencontainers.image.version="1.13.1-dev.2" \
       org.opencontainers.image.licenses="GPL-3.0" \
       io.judge0.arm64.security-status="development-only-not-security-reviewed"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      build-essential ca-certificates cron gcc-9 g++-9 libcap2 libpq-dev libseccomp2 libsystemd0 libyaml-0-2 \
-      nodejs npm postgresql-client python3.8 redis-tools shared-mime-info sudo zlib1g-dev \
-    && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /usr/local/gcc-9.2.0/bin /usr/local/python-3.8.1/bin \
-    && ln -s /usr/bin/gcc-9 /usr/local/gcc-9.2.0/bin/gcc \
-    && ln -s /usr/bin/g++-9 /usr/local/gcc-9.2.0/bin/g++ \
-    && ln -s /usr/bin/python3.8 /usr/local/python-3.8.1/bin/python3
+      build-essential ca-certificates cron libbz2-1.0 libcap2 libexpat1 libffi7 libgdbm6 libgmp10 liblzma5 \
+      libmpc3 libmpfr6 libncurses5 libpq-dev libreadline8 libseccomp2 libsqlite3-0 libssl1.1 \
+      libsystemd0 libyaml-0-2 postgresql-client redis-tools shared-mime-info sudo zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /usr/local/ruby-2.7.0 /usr/local/ruby-2.7.0
 COPY --from=build /tmp/isolate-root/ /
-COPY --from=runtimes /usr/local/go-1.13.5 /usr/local/go-1.13.5
-COPY --from=runtimes /usr/local/openjdk13 /usr/local/openjdk13
-COPY --from=runtimes /usr/local/node-12.14.0 /usr/local/node-12.14.0
-COPY --from=runtimes /usr/local/rust-1.40.0 /usr/local/rust-1.40.0
+COPY --from=native-toolchains /usr/local/gcc-13.2.0 /usr/local/gcc-13.2.0
+COPY --from=native-toolchains /usr/local/python-3.12.7 /usr/local/python-3.12.7
+COPY --from=runtimes /usr/local/go-1.22.7 /usr/local/go-1.22.7
+COPY --from=runtimes /usr/local/openjdk17 /usr/local/openjdk17
+COPY --from=runtimes /usr/local/node-22.8.0 /usr/local/node-22.8.0
+COPY --from=runtimes /usr/local/rust-1.81.0 /usr/local/rust-1.81.0
 COPY --from=runtimes /usr/local/lib/node_modules/typescript /usr/local/lib/node_modules/typescript
+COPY --from=runtimes /usr/local/lib/node_modules/@types /usr/local/lib/node_modules/@types
+COPY --from=runtimes /usr/local/lib/node_modules/undici-types /usr/local/lib/node_modules/undici-types
 
 RUN echo "gem: --no-document" > /root/.gemrc \
     && gem install bundler:2.1.4 \
-    && ln -sf /usr/local/node-12.14.0/bin/node /usr/local/bin/node \
+    && ln -sf /usr/local/node-22.8.0/bin/node /usr/local/bin/node \
     && ln -sf /usr/local/lib/node_modules/typescript/bin/tsc /usr/bin/tsc \
     && useradd -u 1000 -m -r judge0 \
     && echo "judge0 ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/judge0

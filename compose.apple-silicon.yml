@@ -1,6 +1,6 @@
 # Development only: privileged execution of untrusted code is not a production security boundary.
 x-judge0-poc: &judge0-poc
-  image: ${JUDGE0_IMAGE:-judge0-arm64:1.13.1-dev.1}
+  image: ${JUDGE0_IMAGE:-judge0-arm64:1.13.1-dev.2}
   platform: linux/arm64
   privileged: true
   cgroup: host
@@ -36,4 +36,3 @@ services:
 
 volumes:
   judge0-data:
-
