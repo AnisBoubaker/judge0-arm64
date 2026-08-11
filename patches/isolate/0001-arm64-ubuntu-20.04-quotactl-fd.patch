@@ -1,0 +1,21 @@
+From: judge0-arm64 maintainers
+Subject: [PATCH] Define quotactl_fd for old AArch64 libc headers
+
+Ubuntu 20.04's libc headers predate Linux 5.14 and therefore do not expose
+SYS_quotactl_fd. AArch64 uses the asm-generic syscall table, where
+quotactl_fd is syscall 443. Keep this compatibility definition limited to
+AArch64 and only use it when the libc headers do not provide the symbol.
+
+--- a/rules.c
++++ b/rules.c
+@@ -21,6 +21,10 @@
+ #include <sys/vfs.h>
+ #include <unistd.h>
+ 
++#if defined(__aarch64__) && !defined(SYS_quotactl_fd)
++#define SYS_quotactl_fd 443
++#endif
++
+ /*** Environment rules ***/
+ 
+ struct env_rule {

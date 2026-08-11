@@ -1,0 +1,75 @@
+# syntax=docker/dockerfile:1.7
+# Development-only ARM64 proof of concept. This is not a security-reviewed image.
+FROM --platform=linux/arm64 ubuntu:20.04@sha256:722ea796ac2d57eeb3627c58a582fc1acc58be51faf815e1bce1682ae5c092f7 AS build
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG RUBY_VERSION=2.7.0
+ARG RUBY_SHA256=8c99aa93b5e2f1bc8437d1bbbefd27b13e7694025331f77245d0c068ef1f8cbe
+ARG ISOLATE_COMMIT=9c84554464d2aa9161a424e70af67f4210a12c45
+ARG ISOLATE_SHA256=d551ac7cf1b1f4fd3909153f35dd30ad56719f3d221121c6d2217f0405ed532e
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential ca-certificates curl libcap-dev libffi-dev libgdbm-dev \
+      libncurses5-dev libpq-dev libreadline-dev libseccomp-dev libssl-dev \
+      libsystemd-dev libyaml-dev pkg-config zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL "https://cache.ruby-lang.org/pub/ruby/2.7/ruby-${RUBY_VERSION}.tar.gz" -o /tmp/ruby.tar.gz \
+    && echo "${RUBY_SHA256}  /tmp/ruby.tar.gz" | sha256sum -c - \
+    && mkdir /tmp/ruby && tar -xzf /tmp/ruby.tar.gz -C /tmp/ruby --strip-components=1 \
+    && cd /tmp/ruby && ./configure --disable-install-doc --prefix=/usr/local/ruby-${RUBY_VERSION} \
+    && make -j"$(nproc)" && make install
+
+COPY patches/isolate/0001-arm64-ubuntu-20.04-quotactl-fd.patch /tmp/isolate-quotactl-fd.patch
+
+RUN curl -fsSL "https://codeload.github.com/ioi/isolate/tar.gz/${ISOLATE_COMMIT}" -o /tmp/isolate.tar.gz \
+    && echo "${ISOLATE_SHA256}  /tmp/isolate.tar.gz" | sha256sum -c - \
+    && mkdir /tmp/isolate && tar -xzf /tmp/isolate.tar.gz -C /tmp/isolate --strip-components=1 \
+    && patch -d /tmp/isolate -p1 < /tmp/isolate-quotactl-fd.patch \
+    && make -C /tmp/isolate -j"$(nproc)" isolate isolate-cg-keeper
+
+FROM --platform=linux/arm64 ubuntu:20.04@sha256:722ea796ac2d57eeb3627c58a582fc1acc58be51faf815e1bce1682ae5c092f7 AS production
+
+ARG DEBIAN_FRONTEND=noninteractive
+ENV PATH="/usr/local/ruby-2.7.0/bin:/opt/.gem/bin:${PATH}" \
+    GEM_HOME=/opt/.gem \
+    JUDGE0_VERSION=1.13.1-arm64-cgv2-poc \
+    JUDGE0_UPSTREAM_COMMIT=ffd7a48cc6da86d6ac155ef10dbd67d02736070b \
+    JUDGE0_SECURITY_STATUS=development-only-not-security-reviewed
+
+LABEL org.opencontainers.image.source="https://github.com/judge0/judge0" \
+      org.opencontainers.image.version="1.13.1-dev.1" \
+      org.opencontainers.image.licenses="GPL-3.0" \
+      io.judge0.arm64.security-status="development-only-not-security-reviewed"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential ca-certificates cron gcc-9 g++-9 libcap2 libpq-dev libseccomp2 libsystemd0 libyaml-0-2 \
+      nodejs npm postgresql-client python3.8 redis-tools shared-mime-info sudo zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /usr/local/gcc-9.2.0/bin /usr/local/python-3.8.1/bin \
+    && ln -s /usr/bin/gcc-9 /usr/local/gcc-9.2.0/bin/gcc \
+    && ln -s /usr/bin/g++-9 /usr/local/gcc-9.2.0/bin/g++ \
+    && ln -s /usr/bin/python3.8 /usr/local/python-3.8.1/bin/python3
+
+COPY --from=build /usr/local/ruby-2.7.0 /usr/local/ruby-2.7.0
+COPY --from=build /tmp/isolate/isolate /usr/local/bin/isolate
+COPY --from=build /tmp/isolate/isolate-cg-keeper /usr/local/sbin/isolate-cg-keeper
+
+RUN echo "gem: --no-document" > /root/.gemrc \
+    && gem install bundler:2.1.4 \
+    && useradd -u 1000 -m -r judge0 \
+    && echo "judge0 ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/judge0
+
+WORKDIR /api
+COPY Gemfile Gemfile.lock ./
+RUN RAILS_ENV=production bundle install || { \
+      find /opt/.gem/extensions -name mkmf.log -type f -exec cat {} \; ; \
+      exit 1; \
+    }
+COPY . .
+RUN chown judge0:judge0 /api/tmp
+
+EXPOSE 2358
+ENTRYPOINT ["/api/docker-entrypoint.sh"]
+CMD ["/api/scripts/server"]
+USER judge0
