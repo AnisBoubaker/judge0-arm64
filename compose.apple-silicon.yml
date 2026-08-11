@@ -13,7 +13,7 @@ services:
   server:
     <<: *judge0-poc
     ports:
-      - "2358:2358"
+      - "2359:2358"
 
   workers:
     <<: *judge0-poc

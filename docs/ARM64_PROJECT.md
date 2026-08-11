@@ -17,7 +17,13 @@ The isolate source patch in `patches/isolate/` supplies AArch64 syscall 443 (`qu
 
 The image uses isolate's own `make install` staging layout. This installs the setuid binary, `/usr/local/etc/isolate`, `/var/local/lib/isolate`, the cgroup keeper, environment checker, and systemd unit metadata together; copying only the compiled binaries is insufficient because `isolate --init` requires this configuration and directory layout.
 
-The PoC intentionally provides only the existing Judge0 language records for C (GCC 9.2.0), C++ (GCC 9.2.0), and Python (3.8.1), mapped to Ubuntu's native ARM64 GCC 9 and Python 3.8 packages. These compatibility paths unblock API testing but are not byte-for-byte toolchain matches. The full release must build each advertised compiler/runtime version from pinned source archives and disable language records that are not installed.
+The PoC provides the existing Judge0 language records for C (GCC 9.2.0), C++ (GCC 9.2.0), Go (1.13.5), Java (OpenJDK 13.0.1), JavaScript (Node.js 12.14.0), Python (3.8.1), Rust (1.40.0), and TypeScript (3.7.4). Go, Java, Node.js, and Rust use checksum-pinned native ARM64 vendor archives; TypeScript uses its checksum-pinned npm package. GCC and Python are mapped to Ubuntu's native ARM64 GCC 9 and Python 3.8 packages. These are reproducible compatibility runtimes, but the vendor archives and Ubuntu packages are not source builds performed by this Dockerfile.
+
+The image sets `JUDGE0_ENABLED_LANGUAGE_IDS=50,54,60,62,63,71,73,74`. The seed process filters both active and archived definitions to those IDs, so `/languages` does not advertise unavailable runtimes. Upstream behavior remains unchanged when this environment variable is empty. Startup fails if the list contains an unknown ID rather than silently publishing an inconsistent catalog.
+
+The Apple Silicon development configuration limits the worker pool to two and raises the per-process address-space and thread ceilings required by the JVM, Go, Node.js, Rust, and TypeScript toolchains. Because Docker Desktop does not delegate a writable cgroup v2 subtree to this stack, these `RLIMIT`-based settings are compatibility defaults rather than a production security policy.
+
+When `JUDGE0_ARM64_POC=true`, seeding also bounds Go 1.13 build parallelism and the Java 13 heap, metaspace, code cache, and active processor count. This prevents the legacy toolchains from sizing themselves from Docker Desktop's host CPU and memory values while inside an isolate sandbox. The overrides apply only to this PoC image.
 
 ## PoC commands
 

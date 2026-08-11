@@ -29,11 +29,56 @@ RUN curl -fsSL "https://codeload.github.com/ioi/isolate/tar.gz/${ISOLATE_COMMIT}
     && make -C /tmp/isolate -j"$(nproc)" isolate isolate-cg-keeper default.cf systemd/isolate.service \
     && make -C /tmp/isolate DESTDIR=/tmp/isolate-root install
 
+FROM --platform=linux/arm64 ubuntu:20.04@sha256:722ea796ac2d57eeb3627c58a582fc1acc58be51faf815e1bce1682ae5c092f7 AS runtimes
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG GO_VERSION=1.13.5
+ARG GO_SHA256=227b718923e20c846460bbecddde9cb86bad73acc5fb6f8e1a96b81b5c84668b
+ARG JDK_VERSION=13.0.1_9
+ARG JDK_SHA256=f0cfd0d807a10e6128cf1b0ead1e8ae3702ac702d9b4d13914bbce2be06947bb
+ARG NODE_VERSION=12.14.0
+ARG NODE_SHA256=733b4f71ccdf114038bbe0f20574a1e8f4f60b53d39caf445f518745596eadda
+ARG RUST_VERSION=1.40.0
+ARG RUST_SHA256=639271f59766d291ebdade6050e7d05d61cb5c822a3ef9a1e2ab185fed68d729
+ARG TYPESCRIPT_VERSION=3.7.4
+ARG TYPESCRIPT_SHA256=e4f1543efc8d69ed0856b57a909b1786d63dfc3daaaa8056d4f601d98f35daad
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-arm64.tar.gz" -o /tmp/go.tar.gz \
+    && echo "${GO_SHA256}  /tmp/go.tar.gz" | sha256sum -c - \
+    && mkdir -p "/usr/local/go-${GO_VERSION}" \
+    && tar -xzf /tmp/go.tar.gz -C "/usr/local/go-${GO_VERSION}" --strip-components=1
+
+RUN curl -fsSL "https://github.com/AdoptOpenJDK/openjdk13-binaries/releases/download/jdk-13.0.1%2B9/OpenJDK13U-jdk_aarch64_linux_hotspot_${JDK_VERSION}.tar.gz" -o /tmp/jdk.tar.gz \
+    && echo "${JDK_SHA256}  /tmp/jdk.tar.gz" | sha256sum -c - \
+    && mkdir -p /usr/local/openjdk13 \
+    && tar -xzf /tmp/jdk.tar.gz -C /usr/local/openjdk13 --strip-components=1
+
+RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-arm64.tar.xz" -o /tmp/node.tar.xz \
+    && echo "${NODE_SHA256}  /tmp/node.tar.xz" | sha256sum -c - \
+    && mkdir -p "/usr/local/node-${NODE_VERSION}" \
+    && tar -xJf /tmp/node.tar.xz -C "/usr/local/node-${NODE_VERSION}" --strip-components=1
+
+RUN curl -fsSL "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-aarch64-unknown-linux-gnu.tar.gz" -o /tmp/rust.tar.gz \
+    && echo "${RUST_SHA256}  /tmp/rust.tar.gz" | sha256sum -c - \
+    && mkdir /tmp/rust \
+    && tar -xzf /tmp/rust.tar.gz -C /tmp/rust --strip-components=1 \
+    && /tmp/rust/install.sh --prefix="/usr/local/rust-${RUST_VERSION}" --disable-ldconfig
+
+RUN curl -fsSL "https://registry.npmjs.org/typescript/-/typescript-${TYPESCRIPT_VERSION}.tgz" -o /tmp/typescript.tgz \
+    && echo "${TYPESCRIPT_SHA256}  /tmp/typescript.tgz" | sha256sum -c - \
+    && mkdir -p /usr/local/lib/node_modules/typescript \
+    && tar -xzf /tmp/typescript.tgz -C /usr/local/lib/node_modules/typescript --strip-components=1
+
 FROM --platform=linux/arm64 ubuntu:20.04@sha256:722ea796ac2d57eeb3627c58a582fc1acc58be51faf815e1bce1682ae5c092f7 AS production
 
 ARG DEBIAN_FRONTEND=noninteractive
 ENV PATH="/usr/local/ruby-2.7.0/bin:/opt/.gem/bin:${PATH}" \
     GEM_HOME=/opt/.gem \
+    JUDGE0_ARM64_POC=true \
+    JUDGE0_ENABLED_LANGUAGE_IDS=50,54,60,62,63,71,73,74 \
     JUDGE0_VERSION=1.13.1-arm64-cgv2-poc \
     JUDGE0_UPSTREAM_COMMIT=ffd7a48cc6da86d6ac155ef10dbd67d02736070b \
     JUDGE0_SECURITY_STATUS=development-only-not-security-reviewed
@@ -54,9 +99,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=build /usr/local/ruby-2.7.0 /usr/local/ruby-2.7.0
 COPY --from=build /tmp/isolate-root/ /
+COPY --from=runtimes /usr/local/go-1.13.5 /usr/local/go-1.13.5
+COPY --from=runtimes /usr/local/openjdk13 /usr/local/openjdk13
+COPY --from=runtimes /usr/local/node-12.14.0 /usr/local/node-12.14.0
+COPY --from=runtimes /usr/local/rust-1.40.0 /usr/local/rust-1.40.0
+COPY --from=runtimes /usr/local/lib/node_modules/typescript /usr/local/lib/node_modules/typescript
 
 RUN echo "gem: --no-document" > /root/.gemrc \
     && gem install bundler:2.1.4 \
+    && ln -sf /usr/local/node-12.14.0/bin/node /usr/local/bin/node \
+    && ln -sf /usr/local/lib/node_modules/typescript/bin/tsc /usr/bin/tsc \
     && useradd -u 1000 -m -r judge0 \
     && echo "judge0 ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/judge0
 

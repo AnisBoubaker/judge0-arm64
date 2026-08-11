@@ -105,7 +105,8 @@ INTERVAL=
 
 # Specify how many parallel workers to run.
 # Default: 2*nproc (https://linux.die.net/man/1/nproc)
-COUNT=
+# Docker Desktop may report the host CPU count; keep the PoC worker pool small.
+COUNT=2
 
 # Specify maximum queue size. Represents maximum number of submissions that
 # can wait in the queue at once. If request for new submission comes and the
@@ -266,11 +267,12 @@ MAX_WALL_TIME_LIMIT=
 
 # Limit address space of the program in kilobytes.
 # Default: 128000
-MEMORY_LIMIT=
+# RLIMIT_AS fallback for Docker Desktop development (not cgroup memory accounting).
+MEMORY_LIMIT=1024000
 
 # Maximum custom MEMORY_LIMIT.
 # Default: 512000
-MAX_MEMORY_LIMIT=
+MAX_MEMORY_LIMIT=2048000
 
 # Limit process stack in kilobytes.
 # Default: 64000
@@ -282,27 +284,27 @@ MAX_STACK_LIMIT=
 
 # Maximum number of processes and/or threads program can create.
 # Default: 60
-MAX_PROCESSES_AND_OR_THREADS=
+MAX_PROCESSES_AND_OR_THREADS=128
 
 # Maximum custom MAX_PROCESSES_AND_OR_THREADS.
 # Default: 120
-MAX_MAX_PROCESSES_AND_OR_THREADS=
+MAX_MAX_PROCESSES_AND_OR_THREADS=256
 
 # If true then CPU_TIME_LIMIT will be used as per process and thread.
 # Default: false, i.e. CPU_TIME_LIMIT is set as a total limit for all processes and threads.
-ENABLE_PER_PROCESS_AND_THREAD_TIME_LIMIT=
+ENABLE_PER_PROCESS_AND_THREAD_TIME_LIMIT=true
 
 # If false, user won't be able to set ENABLE_PER_PROCESS_AND_THREAD_TIME_LIMIT.
 # Default: true
-ALLOW_ENABLE_PER_PROCESS_AND_THREAD_TIME_LIMIT=
+ALLOW_ENABLE_PER_PROCESS_AND_THREAD_TIME_LIMIT=true
 
 # If true then MEMORY_LIMIT will be used as per process and thread.
 # Default: false, i.e. MEMORY_LIMIT is set as a total limit for all processes and threads.
-ENABLE_PER_PROCESS_AND_THREAD_MEMORY_LIMIT=
+ENABLE_PER_PROCESS_AND_THREAD_MEMORY_LIMIT=true
 
 # If false, user won't be able to set ENABLE_PER_PROCESS_AND_THREAD_MEMORY_LIMIT.
 # Default: true
-ALLOW_ENABLE_PER_PROCESS_AND_THREAD_MEMORY_LIMIT=
+ALLOW_ENABLE_PER_PROCESS_AND_THREAD_MEMORY_LIMIT=true
 
 # Limit size of files created (or modified) by the program in kilobytes.
 # Default: 1024
