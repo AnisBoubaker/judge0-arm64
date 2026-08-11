@@ -15,6 +15,8 @@ This fork targets a reproducible Judge0 CE 1.13.1 build for ARM64 with cgroup v2
 
 The isolate source patch in `patches/isolate/` supplies AArch64 syscall 443 (`quotactl_fd`) when the older Ubuntu 20.04 libc headers omit it. The definition is AArch64-only and does not replace a value supplied by newer headers.
 
+The image uses isolate's own `make install` staging layout. This installs the setuid binary, `/usr/local/etc/isolate`, `/var/local/lib/isolate`, the cgroup keeper, environment checker, and systemd unit metadata together; copying only the compiled binaries is insufficient because `isolate --init` requires this configuration and directory layout.
+
 The PoC intentionally provides only the existing Judge0 language records for C (GCC 9.2.0), C++ (GCC 9.2.0), and Python (3.8.1), mapped to Ubuntu's native ARM64 GCC 9 and Python 3.8 packages. These compatibility paths unblock API testing but are not byte-for-byte toolchain matches. The full release must build each advertised compiler/runtime version from pinned source archives and disable language records that are not installed.
 
 ## PoC commands
@@ -40,6 +42,19 @@ FAIL: cgroup hierarchy is read-only or delegation is unavailable
 Inside the privileged worker, `findmnt` reports the cgroup2 mount as `rw`, but `/sys/fs/cgroup` is mode `0555`, the process is placed below `/docker/<container-id>`, and creating a child cgroup fails. In other words, the files are visible but Docker Desktop has not delegated a writable subtree to the container. This blocks reliable cgroup-backed CPU, memory, and process isolation with the current Compose design. Treat this as a failed security-capability gate, not as a test-suite failure to waive.
 
 Next experiments should be isolated from the Judge0 application build: test explicit cgroup delegation in a Linux VM, a systemd-managed ARM64 Linux host, and any Docker Desktop configuration that changes cgroup namespace/delegation behavior. The full compiler matrix should wait until one of those environments passes this probe.
+
+### Docker Desktop development fallback
+
+To execute trusted local submissions on a Docker Desktop host that fails the cgroup probe, set the following in the mounted `judge0.conf`:
+
+```dotenv
+ENABLE_PER_PROCESS_AND_THREAD_TIME_LIMIT=true
+ALLOW_ENABLE_PER_PROCESS_AND_THREAD_TIME_LIMIT=true
+ENABLE_PER_PROCESS_AND_THREAD_MEMORY_LIMIT=true
+ALLOW_ENABLE_PER_PROCESS_AND_THREAD_MEMORY_LIMIT=true
+```
+
+This prevents Judge0 from passing `--cg` and instead uses isolate's per-process rlimits plus its process-count limit. It does **not** provide aggregate CPU or memory accounting across a process tree and is not an equivalent cgroup-v2 implementation. Because Judge0 1.13.1 rejects an enabled default when the corresponding `ALLOW_*` option is false, this fallback must remain available to API clients; only trusted clients may use this development instance.
 
 ## Release gates
 

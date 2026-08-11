@@ -26,7 +26,8 @@ RUN curl -fsSL "https://codeload.github.com/ioi/isolate/tar.gz/${ISOLATE_COMMIT}
     && echo "${ISOLATE_SHA256}  /tmp/isolate.tar.gz" | sha256sum -c - \
     && mkdir /tmp/isolate && tar -xzf /tmp/isolate.tar.gz -C /tmp/isolate --strip-components=1 \
     && patch -d /tmp/isolate -p1 < /tmp/isolate-quotactl-fd.patch \
-    && make -C /tmp/isolate -j"$(nproc)" isolate isolate-cg-keeper
+    && make -C /tmp/isolate -j"$(nproc)" isolate isolate-cg-keeper default.cf systemd/isolate.service \
+    && make -C /tmp/isolate DESTDIR=/tmp/isolate-root install
 
 FROM --platform=linux/arm64 ubuntu:20.04@sha256:722ea796ac2d57eeb3627c58a582fc1acc58be51faf815e1bce1682ae5c092f7 AS production
 
@@ -52,8 +53,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && ln -s /usr/bin/python3.8 /usr/local/python-3.8.1/bin/python3
 
 COPY --from=build /usr/local/ruby-2.7.0 /usr/local/ruby-2.7.0
-COPY --from=build /tmp/isolate/isolate /usr/local/bin/isolate
-COPY --from=build /tmp/isolate/isolate-cg-keeper /usr/local/sbin/isolate-cg-keeper
+COPY --from=build /tmp/isolate-root/ /
 
 RUN echo "gem: --no-document" > /root/.gemrc \
     && gem install bundler:2.1.4 \
